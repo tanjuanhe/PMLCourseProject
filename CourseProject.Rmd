@@ -1,0 +1,120 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Juanhe Tan"
+date: "31 March 2019"
+output: html_document
+---
+
+## Executive Summary
+
+In this project, we used the Weight Lifting Exercise Dataset from 
+[here](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har).
+6 participants had been asked to perform barbell lifts correctly and incorrectly
+in 5 different ways, and our goal was to use data from accelerometers on their
+belts, forearms, arms, and dumbbells to predict which of the 5 ways they used.
+
+We split our training dataset into a training set (75%) and a validation set
+(25%). We then trained two models, a Random Forest and a Gradient Boosting model,
+using 5-fold cross-validation, on the training set. By testing both on the
+validation set, we decided to pick the Random Forest model as it had a higher
+accuracy. Our estimated out-of-sample error for the Random Forest model is
+0.75% (95% CI of 0.53% to 1.04%).
+
+## Loading and Pre-processing the Data
+
+We first loaded the caret package and the training and testing datasets.
+
+```{r}
+library(caret)
+train <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+```
+
+Both datasets contain 160 variables. The first 7 are identifier variables about
+who did the barbell lifts at what time, and will not be needed for prediction.
+So we remove them from the datasets.
+
+```{r}
+train <- train[, 8:160]
+test <- test[, 8:160]
+```
+
+Next, we notice that some of the variables in the training dataset contain many 
+blank or NA entries. We count these for each of the 153 variables. We realise 
+that each variable has either 0 or 19216 of these entries.
+
+```{r}
+blankNA <- colSums(train=="", na.rm = TRUE) + colSums(is.na(train))
+str(as.factor(blankNA))
+```
+
+Since 19216 is a large fraction of the 19622 observations in the 
+training dataset, we will remove these variables and not use them for training
+our model. We are left with 53 variables, one of which ("classe") is the
+variable we are trying to predict.
+
+```{r}
+indexforexclusion <- which(blankNA == 19216)
+train <- train[, -indexforexclusion]
+test <- test[, -indexforexclusion]
+```
+
+Finally, we set aside 25% of our training set to use as validation. We can do 
+this since we have a large number of observations.
+
+```{r}
+set.seed(101)
+inTrain <- createDataPartition(y = train$classe, p = 0.75, list = FALSE)
+train_train <- train[inTrain,]
+train_validate <- train[-inTrain,]
+```
+
+## Model Selection
+
+Since we are performing a multi-class classification, the two models that
+usually give good results are Random Forests and Gradient Boosting. We will thus
+try these 2 models using the "rf" and "gbm" methods.
+
+### Random Forest model
+
+We use a 5-fold cross-validation to train our Random Forest model. (5- or 10-fold
+cross-validation is usually recommended as a good trade-off between bias and 
+variance in estimating out-of-sample error.) We do this by using the 
+trainControl function.
+
+```{r}
+train_control <- trainControl(method = "cv", number = 5)
+set.seed(101)
+model_RF <- train(classe ~ ., data = train_train, 
+                  method = "rf", trControl = train_control)
+```
+
+We then test our model on the validation set.
+```{r}
+prediction_RF <- predict(model_RF, train_validate)
+confusionMatrix(prediction_RF, train_validate$classe)
+```
+
+### Gradient Boosting model
+
+Next, we also use a 5-fold cross-validation to train our Gradient Boosting model.
+
+```{r}
+set.seed(101)
+model_GBM <- train(classe ~ ., data = train_train, 
+                  method = "gbm", trControl = train_control, verbose = FALSE)
+```
+
+We then test our model on the validation set.
+```{r}
+prediction_GBM <- predict(model_GBM, train_validate)
+confusionMatrix(prediction_GBM, train_validate$classe)
+```
+
+## Conclusion
+
+As the Random Forest model performed better at validation (99.25% accuracy
+compared to 95.82% accuracy for Gradient Boosting), we picked the Random Forest
+model for our predictions on the test set. Our estimated out-of-sample error
+rate for the Random Forest model is 0.75% (95% CI of 0.53% to 1.04%), based on 
+the accuracy of our predictions on the validation set.
